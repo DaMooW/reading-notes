@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>拾页 · 读书笔记</title>
+  <meta name="description" content="把书中的关键数据、年代、原文与你的思考连成一张网">
+  <meta name="theme-color" content="#f6f1e7">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="./icons/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="拾页">
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div id="storage-warning" class="storage-warning" hidden>
+    ⚠ 当前环境不支持持久存储（可能是以文件方式打开的），数据只保留在本次会话。请用「数据 → 导出备份」保存。
+  </div>
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="#/">
+        <img src="./icons/icon-192.png" alt="拾页" width="28" height="28">
+        <span class="brand-name">拾页</span>
+        <span class="brand-sub">读书笔记</span>
+      </a>
+      <nav class="nav">
+        <a class="nav-tab" href="#/" data-nav="notes">笔记</a>
+        <a class="nav-tab" href="#/timeline" data-nav="timeline">时间轴</a>
+        <a class="nav-tab" href="#/chart" data-nav="chart">对比图</a>
+        <a class="nav-tab" href="#/graph" data-nav="graph">因果链</a>
+      </nav>
+      <button class="btn btn-ghost settings-btn" data-action="open-settings">⚙ 数据</button>
+    </div>
+  </header>
+  <main id="view"></main>
+  <div id="modal-root"></div>
+  <footer class="app-footer">拾页 · 数据仅保存在本机浏览器 · 请定期「数据 → 导出备份」</footer>
+
+  <script src="./vendor/echarts.min.js"></script>
+  <script src="./js/db.js"></script>
+  <script src="./js/ui.js"></script>
+  <script src="./js/timeline.js"></script>
+  <script src="./js/charts.js"></script>
+  <script src="./js/graph.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>
