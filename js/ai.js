@@ -13,9 +13,10 @@
   function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
 
   // ---------- 配置 ----------
+  const DEFAULT_WORKER_URL = ''; // 部署 Worker 后填入，如 https://reading-notes-worker.xxx.workers.dev
   function getKey() { return lsGet(K_KEY); }
   function setKey(k) { lsSet(K_KEY, k.trim()); }
-  function getWorkerUrl() { return lsGet(K_WORKER); }
+  function getWorkerUrl() { return lsGet(K_WORKER) || DEFAULT_WORKER_URL; }
   function setWorkerUrl(u) { lsSet(K_WORKER, u.trim()); }
   function configured() { return !!getKey() && !!getWorkerUrl(); }
   function autoLinkEnabled() { return lsGet(K_AUTOLINK) !== '0'; }
