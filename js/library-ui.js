@@ -106,7 +106,7 @@
 
   async function doDeconstruct(bookId) {
     const AI = window.ShiyeAI;
-    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 API Key 与代理地址'); U.openSettings(); return; }
+    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 DeepSeek API Key'); U.openSettings(); return; }
     const book = await LIB.getBook(bookId);
     if (!book) return;
     const chunks = LIB.buildChunks(book);

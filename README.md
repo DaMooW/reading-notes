@@ -11,7 +11,7 @@
 - **因果链图**：笔记之间用带类型的关系连线（导致/促进/循环/反转/对比/联想），拖动节点、缩放画布
 - **数据管理**：一键导出/导入 JSON 备份，数据仅存本机浏览器（localStorage）
 
-### AI Native 能力（v2，需配置 DeepSeek API Key + 自建代理）
+### AI Native 能力（v2，只需一个 DeepSeek API Key）
 - **✨ AI 记笔记助手**：粘贴原文/转述（或拍照 OCR 识别书页）→ AI 生成结构化笔记草稿填入表单：标题、年代、关键数据点、原文摘录、思考、标签，并**建议与已有笔记的关联**（关系类型 + 理由），一键接受
 - **💡 自动关联**：保存笔记后 AI 自动判断「这条该和哪几条连线」，以建议形式呈现，人工确认后生效
 - **💬 追问 AI**：每条笔记底部可直接提问，AI 只基于「本条笔记 + 因果链邻居 + 数据点」回答，不编造，并给出可继续追问的问题
@@ -30,18 +30,14 @@
 
 > 数据按「设备 + 浏览器」本地保存，两台设备之间的数据暂不互通；换设备或想备份时用「数据 → 导出/导入」。
 
-## AI 功能配置（三步）
+## AI 功能配置（两步，无需任何服务器）
 
 1. **DeepSeek API Key**：[platform.deepseek.com](https://platform.deepseek.com) 注册并充值（¥10 起），创建 API Key（sk- 开头）。
-2. **部署代理 Worker**：本项目自带一个无状态代理（见 `../reading-notes-worker`）：
-   ```bash
-   cd ../reading-notes-worker
-   npm install
-   npx wrangler login      # 首次会打开浏览器登录 Cloudflare（免费账号）
-   npx wrangler deploy     # 部署后得到 https://reading-notes-worker.<你的子域>.workers.dev
-   ```
-   代理只转发请求、不保存任何数据，你的 Key 存在自己设备浏览器里，每次请求带上。
-3. **拾页里配置**：右上「⚙ 数据 → AI 设置」填入 API Key 与代理地址，勾选「自动建议关联」→ 保存。
+2. **拾页里配置**：右上「⚙ 数据 → AI 设置」填入 API Key → 保存。
+
+拾页默认**直连 DeepSeek 官方 API**（已验证支持浏览器跨域、国内网络可达），你的 Key 只存在本机浏览器、只发送给 DeepSeek 官方，不需要任何服务器或代理。
+
+> 可选：`../reading-notes-worker` 是一个无状态代理（Cloudflare Worker），供未来代理行情数据等场景使用；如自行部署了代理，把地址填进「代理地址」即切换，留空保持直连。
 
 > 不配 AI 也完全可用：拾页的核心笔记功能不依赖任何 AI 或服务器。
 
@@ -66,7 +62,10 @@ GitHub Pages 会自动重新发布。若想改动外观/功能：
 python3 -m http.server 8000   # 在项目目录运行
 # 打开 http://127.0.0.1:8000
 # 测试 AI 功能无需真实 Key：cd ../reading-notes-worker && node mock/deepseek-mock.js
-# 然后在「AI 设置」里把代理地址填 http://127.0.0.1:8790，Key 填任意 sk- 开头字符串
+# 然后在浏览器控制台执行：
+#   localStorage.setItem('shiye_ai_key','sk-test-1')
+#   localStorage.setItem('shiye_ai_base_url','http://127.0.0.1:8790')
+# 刷新后 AI 功能即走本地 mock（无真实调用、无费用）
 ```
 
 ## 目录结构

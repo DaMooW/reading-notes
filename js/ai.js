@@ -13,39 +13,62 @@
   function lsDel(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } }
 
   // ---------- 配置 ----------
-  const DEFAULT_WORKER_URL = ''; // 部署 Worker 后填入，如 https://reading-notes-worker.xxx.workers.dev
+  // 直连模式（默认）：浏览器直接调用 DeepSeek 官方 API（已验证支持 CORS，国内可达）。
+  // 如部署了代理（如 Cloudflare Worker），在设置里填代理地址即可切换。
+  const DIRECT_URL = 'https://api.deepseek.com';
+  const K_BASE = 'shiye_ai_base_url'; // 开发/测试覆盖：强制直连契约指向指定地址
   function getKey() { return lsGet(K_KEY); }
   function setKey(k) { lsSet(K_KEY, k.trim()); }
-  function getWorkerUrl() { return lsGet(K_WORKER) || DEFAULT_WORKER_URL; }
+  function getWorkerUrl() { return lsGet(K_WORKER); }
   function setWorkerUrl(u) { lsSet(K_WORKER, u.trim()); }
-  function configured() { return !!getKey() && !!getWorkerUrl(); }
+  function configured() { return !!getKey(); }
   function autoLinkEnabled() { return lsGet(K_AUTOLINK) !== '0'; }
   function setAutoLink(v) { lsSet(K_AUTOLINK, v ? '1' : '0'); }
 
-  // ---------- Worker 客户端 ----------
+  // 解析调用目标：{url, path, authMode}；authMode='body'（代理契约）或 'header'（DeepSeek 官方契约）
+  function resolveTarget() {
+    const testBase = lsGet(K_BASE);
+    if (testBase) return { url: testBase.replace(/\/+$/, ''), path: '/chat/completions', authMode: 'header' };
+    const w = getWorkerUrl().replace(/\/+$/, '');
+    if (w) return { url: w, path: '/api/chat', authMode: 'body' };
+    return { url: DIRECT_URL, path: '/chat/completions', authMode: 'header' };
+  }
+
+  // ---------- Worker / DeepSeek 客户端 ----------
   async function aiChat(messages, opts) {
     opts = opts || {};
-    if (!configured()) throw new Error('请先在「⚙ 数据 → AI 设置」里填好 DeepSeek API Key 与代理地址');
+    if (!configured()) throw new Error('请先在「⚙ 数据 → AI 设置」里填好 DeepSeek API Key');
+    const target = resolveTarget();
     const body = {
-      apiKey: getKey(),
+      model: opts.model || 'deepseek-chat',
       messages: messages,
       stream: !!opts.stream,
     };
     if (opts.json) body.response_format = { type: 'json_object' };
     if (opts.temperature != null) body.temperature = opts.temperature;
+    if (opts.maxTokens != null) body.max_tokens = opts.maxTokens;
+    const headers = { 'Content-Type': 'application/json' };
+    if (target.authMode === 'header') {
+      headers.Authorization = 'Bearer ' + getKey();
+    } else {
+      body.apiKey = getKey();
+    }
     let res;
     try {
-      res = await fetch(getWorkerUrl() + '/api/chat', {
+      res = await fetch(target.url + target.path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(body),
       });
     } catch (e) {
-      throw new Error('无法连接 AI 代理（' + (e && e.message || '网络错误') + '），请检查代理地址与网络');
+      throw new Error('无法连接 AI 服务（' + (e && e.message || '网络错误') + '），请检查网络');
     }
     if (!res.ok) {
       let msg = 'HTTP ' + res.status;
-      try { const j = await res.json(); if (j && j.error) msg = j.error; } catch (e) { /* ignore */ }
+      try {
+        const j = await res.json();
+        if (j && j.error) msg = typeof j.error === 'string' ? j.error : (j.error.message || j.error.type || '未知错误');
+      } catch (e) { /* ignore */ }
       throw new Error('AI 服务错误：' + msg);
     }
     if (!opts.stream) {

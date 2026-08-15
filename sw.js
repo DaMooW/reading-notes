@@ -1,5 +1,5 @@
 /* 拾页 · Service Worker：离线缓存 + 更新策略 */
-const CACHE = 'shiye-v2';
+const CACHE = 'shiye-v3';
 const ASSETS = [
   './',
   './index.html',

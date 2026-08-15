@@ -527,7 +527,7 @@
               <label class="fld">API Key
                 <input id="ai-key" type="password" placeholder="sk-..." value="${esc(AI.getKey())}">
               </label>
-              <label class="fld">代理地址
+              <label class="fld">代理地址（可选，留空 = 直连 DeepSeek 官方，推荐）
                 <input id="ai-worker" type="text" placeholder="https://你的代理.workers.dev" value="${esc(AI.getWorkerUrl())}">
               </label>
               <label class="check-row"><input type="checkbox" id="ai-autolink"${AI.autoLinkEnabled() ? ' checked' : ''}> 保存笔记后自动让 AI 建议关联</label>
@@ -535,7 +535,7 @@
                 <button class="btn btn-primary btn-sm" data-action="save-ai-settings">保存 AI 设置</button>
                 <span class="dim" id="ai-settings-status"></span>
               </div>
-              <p class="dim small">Key 只存在本机浏览器，请求经你自己的 Cloudflare Workers 代理转发给 DeepSeek，不上传任何第三方。导出备份不含 Key。</p>
+              <p class="dim small">Key 只存在本机浏览器，直连时仅发送给 DeepSeek 官方（api.deepseek.com），不上传任何第三方。导出备份不含 Key。留空代理地址即可直连；只有当你部署了自己的代理并填入地址后才走代理。</p>
             </div>
             <div class="setting-row">
               <div><b>导出备份</b><div class="dim">把全部笔记下载为一个 JSON 文件，建议定期备份。</div></div>
@@ -738,7 +738,7 @@
     const AI = window.ShiyeAI;
     const raw = document.getElementById('ai-raw').value.trim();
     if (!raw) { aiStatus('请先粘贴原文或拍照识别', true); return; }
-    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 API Key 与代理地址'); openSettings(); return; }
+    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 DeepSeek API Key'); openSettings(); return; }
     aiStatus('AI 整理中…');
     const btn = document.querySelector('[data-action="ai-organize"]');
     if (btn) btn.disabled = true;
@@ -821,7 +821,7 @@
     const n = DB.getNote(noteId);
     if (!n) return;
     const AI = window.ShiyeAI;
-    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 API Key 与代理地址'); openSettings(); return; }
+    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 DeepSeek API Key'); openSettings(); return; }
     chatNoteId = noteId;
     chatStreaming = false;
     const msgs = AI.getChat(noteId);
@@ -908,7 +908,7 @@
     AI.setWorkerUrl(document.getElementById('ai-worker').value);
     AI.setAutoLink(document.getElementById('ai-autolink').checked);
     const s = document.getElementById('ai-settings-status');
-    if (s) s.textContent = AI.configured() ? '✅ 已保存，AI 功能可用' : '已保存（Key 与代理地址都要填好才能用）';
+    if (s) s.textContent = AI.configured() ? '✅ 已保存，AI 功能可用' : '已保存（还需填 API Key 才能用）';
   }
 
   function onViewChange(e) {
