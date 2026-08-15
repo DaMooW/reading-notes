@@ -42,7 +42,7 @@
     return (all || []).sort((a, b) => b.importedAt - a.importedAt);
   }
 
-  // ---------- 导入 ----------
+  // ---------- 导入（与 DB 书籍自动关联） ----------
   async function importFile(file, onProgress) {
     if (!window.ShiyeParse) throw new Error('解析模块未加载');
     const fmt = window.ShiyeParse.detectFormat(file.name);
@@ -55,16 +55,26 @@
     } catch (e) {
       throw new Error('解析失败：' + (e && e.message || '未知错误'));
     }
-    const id = 'lib-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const title = parsed.title || file.name.replace(/\.[^.]+$/, '');
+    // 已有同名 DB 书籍则复用其 id，否则新建
+    const existing = DB.getBooks().find(b => (b.title || '').trim() === title.trim());
+    const bookId = existing ? existing.id : DB.addBook(title, parsed.author || '').id;
     const book = {
-      id, format: fmt,
-      title: parsed.title || file.name.replace(/\.[^.]+$/, ''),
+      id: bookId, format: fmt,
+      title: title,
       author: parsed.author || '',
       chapters: parsed.chapters || [],
       importedAt: Date.now(), size: file.size,
     };
     await putBook(book);
     return book;
+  }
+
+  // 删除整本书：书库全文 + DB 书籍 + 其全部笔记（含关联）
+  async function removeBookFully(bookId) {
+    try { await deleteBook(bookId); } catch (e) { /* IndexedDB 里可能没有全文 */ }
+    DB.getNotes().filter(n => n.bookId === bookId).forEach(n => DB.deleteNote(n.id));
+    DB.deleteBook(bookId);
   }
 
   function bookChars(book) {
@@ -203,7 +213,7 @@
         if (!dn.title) return;
         DB.upsertNote({
           title: dn.title,
-          bookId: '',
+          bookId: bookId, // 草稿归属源书（导入时已与 DB 书籍关联）
           time: dn.time || {},
           quote: {
             chapter: (dn.quote && dn.quote.chapter) || c.title,
@@ -233,7 +243,7 @@
   function unique(arr) { return Array.from(new Set(arr)); }
 
   window.ShiyeLibrary = {
-    listBooks, getBook, deleteBook, importFile, bookChars,
+    listBooks, getBook, deleteBook, importFile, bookChars, removeBookFully,
     findPassages, searchAllBooks,
     getTask, cancelTask, clearTask, taskRunning, startDeconstruct, buildChunks,
   };

@@ -4,6 +4,10 @@
 
 ## 功能
 
+### 书籍管理（首页）
+- **首页即书架**：每本书一个研读空间（笔记 / 拆书 / 原文定位都在书内）；支持新建书籍、导入电子书（EPUB/PDF/TXT/MD，自动解析全文存本机）、删除整书
+- **《日本大衰退》研读包**：一键载入 21 条结构化笔记 + 25 条因果链（自撰示例内容，标注【示例】，可编辑/删除），直接可看时间轴、对比图、因果链效果
+
 ### 笔记核心
 - **笔记**：标题、所属书、年代（起止年份 + 时间标签）、原文定位（章节/页码/原文摘录）、关键数据点（指标/数值/单位/年份/说明）、我的思考/联想、标签
 - **时间轴**：按年代把笔记铺成一条线，看事件如何一步步发生
@@ -73,11 +77,11 @@ python3 -m http.server 8000   # 在项目目录运行
 ```
 index.html            入口
 css/style.css         样式
-js/db.js              数据层（localStorage + 预置示例）
-js/ui.js              列表/详情/编辑/AI 整理/追问/数据管理
-js/ai.js              AI 层（密钥管理、Worker 流式客户端、提示词、OCR 懒加载）
+js/db.js              数据层（localStorage + 《日本大衰退》研读包）
+js/ui.js              书籍内笔记/详情/编辑/AI 整理/追问/数据管理
+js/ai.js              AI 层（密钥管理、直连 DeepSeek、提示词、OCR 懒加载）
 js/library.js         书库数据层（IndexedDB、拆书任务、原文定位搜索）
-js/library-ui.js      书库页面
+js/library-ui.js      书籍管理主页（书架/新建/导入/拆书）
 js/library-parse.js   EPUB/PDF/TXT/MD 解析（ShiyeParse）
 js/timeline.js        时间轴
 js/charts.js          数据对比图（ECharts）
@@ -87,6 +91,14 @@ sw.js                 Service Worker（离线 + CDN 按需缓存）
 manifest.webmanifest  PWA 清单
 icons/                图标（make-icons.js 可重新生成）
 vendor/               echarts / jszip / pdf.js（全部本地化，离线可用）
-tools/test-parse.html 书文件解析可视化测试页
+test/samples/         示例拆书文本（自撰，体验拆书流程用）
 test/                 解析模块测试夹具
+tools/test-parse.html 书文件解析可视化测试页
 ```
+
+## 关于「日本大衰退」资料
+
+本仓库**不包含、也不提供原书的 PDF/TXT 等盗版资源**（受版权保护）。仓库中的研读包与示例拆书文本均为**根据公开资料自撰的示例内容**，摘录字段统一标注【示例】。建议的使用方式：
+
+1. 阅读你的正版纸质书/电子书时，用「✨ AI 整理」拍照/粘贴原文，或导入你合法持有的电子书文件一键拆书；
+2. 示例文本（`test/samples/日本大衰退-示例拆书文本.txt`）可用于先体验拆书流程，体验后可删除。

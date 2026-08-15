@@ -48,6 +48,9 @@
   // ---------- 列表状态 ----------
   const listState = { q: '', bookId: '', tag: '', sort: 'time-desc', draftOnly: false };
 
+  function setBookFilter(id) { listState.bookId = id || ''; }
+  function getBookFilter() { return listState.bookId; }
+
   function filteredNotes() {
     let arr = DB.getNotes();
     const q = listState.q.trim().toLowerCase();
@@ -105,15 +108,25 @@
     }).join('');
 
     const draftN = DB.draftCount();
+    const curBook = listState.bookId ? DB.getBook(listState.bookId) : null;
+    const bookHeader = curBook ? `
+      <div class="book-notes-head">
+        <div>
+          <h2 class="book-notes-title">《${esc(curBook.title)}》${curBook.author ? '<span class="dim"> · ' + esc(curBook.author) + '</span>' : ''}</h2>
+          <div class="dim">${notes.length} 条笔记${listState.draftOnly ? '（仅草稿）' : ''} · <a data-action="goto-books">← 返回书籍</a></div>
+        </div>
+        <button class="btn btn-primary" data-action="new-note">＋ 记一条</button>
+      </div>` : '';
     el.innerHTML = `
+      ${bookHeader}
       <div class="list-toolbar">
         <div class="search-box">
           <input id="list-search" type="search" placeholder="搜索标题、原文、思考、数据点…" value="${esc(listState.q)}">
         </div>
-        <select id="list-book" class="select">
+        ${curBook ? '' : `<select id="list-book" class="select">
           <option value="">全部书籍</option>
           ${books.map(b => '<option value="' + esc(b.id) + '"' + (listState.bookId === b.id ? ' selected' : '') + '>《' + esc(b.title) + '》</option>').join('')}
-        </select>
+        </select>`}
         <select id="list-sort" class="select">
           <option value="time-desc"${listState.sort === 'time-desc' ? ' selected' : ''}>时间 ↓ 新→旧</option>
           <option value="time-asc"${listState.sort === 'time-asc' ? ' selected' : ''}>时间 ↑ 旧→新</option>
@@ -131,7 +144,8 @@
 
     const s = el.querySelector('#list-search');
     s.addEventListener('input', () => { listState.q = s.value; renderList(el); s.focus(); s.setSelectionRange(s.value.length, s.value.length); });
-    el.querySelector('#list-book').addEventListener('change', e => { listState.bookId = e.target.value; renderList(el); });
+    const bs = el.querySelector('#list-book');
+    if (bs) bs.addEventListener('change', e => { listState.bookId = e.target.value; renderList(el); });
     el.querySelector('#list-sort').addEventListener('change', e => { listState.sort = e.target.value; renderList(el); });
   }
 
@@ -141,7 +155,7 @@
       <div class="empty-state">
         <div class="empty-glyph">❖</div>
         <p>还没有笔记。先「＋ 新笔记」记下第一条吧。</p>
-        ${empty ? '<button class="btn btn-outline" data-action="load-seed">载入《日本大衰退》示例数据</button>' : ''}
+        ${empty ? '<button class="btn btn-outline" data-action="load-seed">载入《日本大衰退》研读包</button>' : ''}
       </div>`;
   }
 
@@ -179,7 +193,7 @@
 
     el.innerHTML = `
       <div class="detail-page">
-        <button class="btn btn-ghost" data-action="goto-list">← 返回列表</button>
+        <button class="btn btn-ghost" data-action="goto-list" data-back="${esc(n.bookId && DB.getBook(n.bookId) ? '#/book/' + n.bookId : '#/notes')}">← 返回笔记列表</button>
         ${n.status === 'draft' ? `
         <div class="draft-banner">
           <span>🧾 这是 AI 拆书生成的草稿，确认无误后采纳入库。</span>
@@ -303,7 +317,9 @@
     const n = existing || {
       // 未保存的新笔记重渲染时复用原草稿 id，避免已建立的关联悬空
       id: (isNewNote && draftId && !DB.getNote(draftId)) ? draftId : uid(),
-      bookId: '', title: '', time: {}, quote: {}, keyData: [],
+      // 新笔记默认归属当前浏览的书
+      bookId: (isNewNote && !snap && listState.bookId && DB.getBook(listState.bookId)) ? listState.bookId : '',
+      title: '', time: {}, quote: {}, keyData: [],
       thoughts: '', tags: [], createdAt: Date.now(),
     };
     if (snap) { // 恢复未保存的表单状态
@@ -506,7 +522,8 @@
       const id = draftId;
       DB.getLinks().filter(l => l.from === id || l.to === id).forEach(l => DB.deleteLink(l.id));
       isNew = false;
-      location.hash = '#/';
+      // 回到来源：书内新建 → 回该书笔记；全局新建 → 回书籍主页
+      location.hash = listState.bookId ? '#/book/' + listState.bookId : '#/';
     } else {
       isNew = false;
       location.hash = '#/note/' + draftId;
@@ -613,7 +630,8 @@
       case 'open-note': location.hash = '#/note/' + id; break;
       case 'edit-note': location.hash = '#/note/' + id + '/edit'; break;
       case 'new-note': location.hash = '#/note/new'; break;
-      case 'goto-list': location.hash = '#/'; break;
+      case 'goto-list': location.hash = t.dataset.back || '#/notes'; break;
+      case 'goto-books': location.hash = '#/'; break;
       case 'cancel-edit': cancelEditor(); break;
       case 'delete-note':
         if (confirm('确定删除这条笔记？其上的因果链关联会一并删除。')) {
@@ -625,9 +643,12 @@
         listState.tag = listState.tag === t.dataset.tag ? '' : t.dataset.tag;
         renderList(document.getElementById('view'));
         break;
-      case 'load-seed':
-        if (DB.seedIfEmpty()) { renderList(document.getElementById('view')); }
+      case 'load-seed': {
+        const r = DB.installContentPack();
+        alert(r.added > 0 ? '已载入《日本大衰退》研读包：新增 ' + r.added + ' 条笔记' : '研读包已存在，无需重复载入');
+        if (r.added > 0) renderList(document.getElementById('view'));
         break;
+      }
       case 'save-note': saveEditor(document.getElementById('view')); break;
       case 'add-datapoint': {
         const box = document.getElementById('f-datapoints');
@@ -724,7 +745,8 @@
 
   function showDrafts() {
     listState.draftOnly = true;
-    location.hash = '#/';
+    listState.bookId = '';
+    location.hash = '#/notes';
     renderList(document.getElementById('view'));
   }
 
@@ -929,6 +951,7 @@
 
   window.ShiyeUI = {
     attach, renderList, renderDetail, renderEditor, openSettings, showDrafts,
+    setBookFilter, getBookFilter,
     esc, fmtVal, fmtTime, timeBadge, bookName, dataChipHTML, tagHTML,
   };
 })();
