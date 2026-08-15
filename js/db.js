@@ -25,7 +25,11 @@
   }
 
   // ---------- 数据结构 ----------
-  let data = loadRaw() || { version: 1, books: [], notes: [], links: [] };
+  let data = loadRaw() || { version: 2, books: [], notes: [], links: [] };
+
+  // 迁移：为旧数据补默认字段（草稿态等）
+  (data.notes || []).forEach(n => { if (!n.status) n.status = 'confirmed'; });
+  if (!data.version) data.version = 2;
 
   function save() { persist(data); }
   function uid(prefix) {
@@ -70,7 +74,12 @@
         desc: (d.desc || '').trim(),
       })),
       thoughts: (note.thoughts || '').trim(),
-      tags: unique((note.tags || '').split(/[,，、;；\s]+/).map(t => t.trim()).filter(Boolean)),
+      tags: unique(
+        (Array.isArray(note.tags) ? note.tags : (note.tags || '').split(/[,，、;；\s]+/))
+          .map(t => String(t).trim()).filter(Boolean)
+      ),
+      status: note.status === 'draft' ? 'draft' : 'confirmed',
+      sourceRef: note.sourceRef || null,   // {libraryId, chapter, quoteText} AI 拆书来源引用
       createdAt: note.createdAt || Date.now(),
       updatedAt: Date.now(),
     };
@@ -89,6 +98,19 @@
     data.notes = data.notes.filter(n => n.id !== id);
     data.links = data.links.filter(l => l.from !== id && l.to !== id);
     save();
+  }
+
+  function setNoteStatus(id, status) {
+    const n = data.notes.find(x => x.id === id);
+    if (!n) return null;
+    n.status = status === 'draft' ? 'draft' : 'confirmed';
+    n.updatedAt = Date.now();
+    save();
+    return n;
+  }
+
+  function draftCount() {
+    return data.notes.filter(n => n.status === 'draft').length;
   }
 
   // ---------- 因果链 ----------
@@ -207,7 +229,7 @@
 
   window.ShiyeDB = {
     storageOK, getBooks, addBook, getBook,
-    getNotes, getNote, upsertNote, deleteNote,
+    getNotes, getNote, upsertNote, deleteNote, setNoteStatus, draftCount,
     getLinks, addLink, deleteLink, allTags,
     exportJSON, importJSON, clearAll, isEmpty, seedIfEmpty,
   };

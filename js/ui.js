@@ -46,13 +46,14 @@
   }
 
   // ---------- 列表状态 ----------
-  const listState = { q: '', bookId: '', tag: '', sort: 'time-desc' };
+  const listState = { q: '', bookId: '', tag: '', sort: 'time-desc', draftOnly: false };
 
   function filteredNotes() {
     let arr = DB.getNotes();
     const q = listState.q.trim().toLowerCase();
     if (listState.bookId) arr = arr.filter(n => n.bookId === listState.bookId);
     if (listState.tag) arr = arr.filter(n => (n.tags || []).includes(listState.tag));
+    if (listState.draftOnly) arr = arr.filter(n => n.status === 'draft');
     if (q) {
       arr = arr.filter(n => {
         const b = bookName(n).toLowerCase();
@@ -80,8 +81,10 @@
     const chips = notes.slice(0, 60).map(n => {
       const b = bookName(n);
       const dchips = (n.keyData || []).slice(0, 4).map(dataChipHTML).join('');
+      const isDraft = n.status === 'draft';
       return `
-      <article class="note-card" data-action="open-note" data-id="${esc(n.id)}">
+      <article class="note-card${isDraft ? ' is-draft' : ''}" data-action="open-note" data-id="${esc(n.id)}">
+        ${isDraft ? '<div class="draft-flag">🧾 AI 草稿' + (n.sourceRef && n.sourceRef.chapter ? ' · ' + esc(n.sourceRef.chapter) : '') + '</div>' : ''}
         <div class="note-card-top">
           <span class="time-badge">${esc(timeBadge(n))}</span>
           <h3 class="note-title">${esc(n.title)}</h3>
@@ -93,11 +96,15 @@
         ${dchips ? '<div class="note-chips">' + dchips + '</div>' : ''}
         ${n.thoughts ? '<p class="note-snippet">' + esc(n.thoughts.slice(0, 110)) + (n.thoughts.length > 110 ? '…' : '') + '</p>' : ''}
         <div class="note-card-foot"><span class="dim">' + esc(fmtTime(n)) + '</span>
-          <button class="btn btn-ghost btn-sm" data-action="edit-note" data-id="${esc(n.id)}">编辑</button>
+          <span class="note-card-btns">
+            ${isDraft ? '<button class="btn btn-accept btn-sm" data-action="accept-draft" data-id="' + esc(n.id) + '">✅ 采纳</button>' : ''}
+            <button class="btn btn-ghost btn-sm" data-action="edit-note" data-id="${esc(n.id)}">编辑</button>
+          </span>
         </div>
       </article>`;
     }).join('');
 
+    const draftN = DB.draftCount();
     el.innerHTML = `
       <div class="list-toolbar">
         <div class="search-box">
@@ -114,8 +121,11 @@
         </select>
         <button class="btn btn-primary" data-action="new-note">＋ 新笔记</button>
       </div>
-      ${tags.length ? '<div class="tag-cloud">' + tags.map(t => tagHTML(t, listState.tag === t)).join('') + '</div>' : ''}
-      <div class="list-count dim">共 ${notes.length} 条笔记</div>
+      <div class="tag-cloud">
+        <button class="chip chip-draft${listState.draftOnly ? ' active' : ''}" data-action="toggle-drafts">🧾 待审阅草稿${draftN ? '（' + draftN + '）' : ''}</button>
+        ${tags.map(t => tagHTML(t, listState.tag === t)).join('')}
+      </div>
+      <div class="list-count dim">共 ${notes.length} 条笔记${listState.draftOnly ? '（仅草稿）' : ''}</div>
       ${notes.length ? '<div class="note-grid">' + chips + '</div>' : renderEmptyState()}
     `;
 
@@ -162,15 +172,32 @@
         <button class="btn btn-ghost btn-sm" data-action="remove-link" data-id="${esc(l.id)}">✕</button>
       </div>`).join('');
 
+    // AI 关联建议
+    const sugHTML = renderSuggestionRows(id);
+    // 追问上下文统计
+    const ctxCount = 1 + links.length + (n.keyData || []).length;
+
     el.innerHTML = `
       <div class="detail-page">
         <button class="btn btn-ghost" data-action="goto-list">← 返回列表</button>
+        ${n.status === 'draft' ? `
+        <div class="draft-banner">
+          <span>🧾 这是 AI 拆书生成的草稿，确认无误后采纳入库。</span>
+          <span class="draft-banner-btns">
+            <button class="btn btn-accept btn-sm" data-action="accept-draft" data-id="${esc(n.id)}">✅ 采纳</button>
+            <button class="btn btn-outline btn-sm" data-action="edit-note" data-id="${esc(n.id)}">✏️ 先改再采纳</button>
+            <button class="btn btn-ghost btn-sm" data-action="delete-note" data-id="${esc(n.id)}">🗑 丢弃</button>
+          </span>
+        </div>` : ''}
         <div class="detail-head">
           <span class="time-badge big">${esc(fmtTime(n))}</span>
           <h2 class="detail-title">${esc(n.title)}</h2>
           ${b ? '<div class="book-name">《' + esc(b.title) + '》' + (b.author ? ' · ' + esc(b.author) : '') + '</div>' : ''}
+          ${n.sourceRef && n.sourceRef.chapter ? '<div class="dim" style="font-size:12.5px">出处：书库 · ' + esc(n.sourceRef.chapter) + '</div>' : ''}
           ${(n.tags || []).length ? '<div class="note-tags">' + n.tags.map(t => '<span class="mini-tag">#' + esc(t) + '</span>').join('') + '</div>' : ''}
         </div>
+
+        ${sugHTML ? `<section class="detail-sec sug-sec"><h4>💡 AI 建议的关联</h4>${sugHTML}</section>` : ''}
 
         ${(n.keyData || []).length ? `<section class="detail-sec"><h4>关键数据点</h4>
           <div class="data-grid">${n.keyData.map(d => {
@@ -194,11 +221,62 @@
           ${links.length ? outHTML + inHTML : '<p class="dim">暂无关联。编辑时可把这条笔记与其它笔记连起来。</p>'}
         </section>
 
+        <section class="detail-sec">
+          <h4>💬 追问 AI</h4>
+          <p class="dim">基于本条笔记 + ${ctxCount - 1} 条关联 + ${(n.keyData || []).length} 个数据点提问。AI 回答只引用现有笔记，不会编造。</p>
+          <button class="btn btn-outline" data-action="chat-open" data-id="${esc(n.id)}">💬 就这条笔记提问</button>
+        </section>
+
         <div class="detail-actions">
           <button class="btn btn-primary" data-action="edit-note" data-id="${esc(n.id)}">编辑</button>
           <button class="btn btn-danger-outline" data-action="delete-note" data-id="${esc(n.id)}">删除</button>
         </div>
       </div>`;
+  }
+
+  function renderSuggestionRows(noteId) {
+    let sug = [];
+    try { sug = window.ShiyeAI.getSuggestions(noteId); } catch (e) { /* ignore */ }
+    const pending = sug.filter(s => !s.done && s.toId && DB.getNote(s.toId));
+    return pending.map(s => {
+      const target = DB.getNote(s.toId);
+      return `<div class="sug-row">
+        <span class="sug-arrow">→</span>
+        <span class="link-type type-${esc(s.type)}">${esc(s.type)}</span>
+        <a class="link-target" data-action="open-note" data-id="${esc(s.toId)}">${esc(target ? target.title : '?')}</a>
+        ${s.reason ? '<span class="dim link-note">' + esc(s.reason) + '</span>' : ''}
+        <span class="sug-btns">
+          <button class="btn btn-accept btn-sm" data-action="sug-accept" data-note="${esc(noteId)}" data-to="${esc(s.toId)}" data-type="${esc(s.type)}" data-reason="${esc(s.reason || '')}">接受</button>
+          <button class="btn btn-ghost btn-sm" data-action="sug-ignore" data-note="${esc(noteId)}" data-to="${esc(s.toId)}">忽略</button>
+        </span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderEditorSugBox(noteId) {
+    const rows = renderSuggestionRows(noteId);
+    if (!rows) return '';
+    return '<div class="sug-box"><div class="fld-head"><span>💡 AI 建议的关联</span></div>' + rows + '</div>';
+  }
+
+  function acceptSuggestion(noteId, toId, type, reason) {
+    try {
+      const sug = window.ShiyeAI.getSuggestions(noteId);
+      const i = sug.findIndex(s => s.toId === toId);
+      if (i >= 0) sug[i].done = true;
+      window.ShiyeAI.setSuggestions(noteId, sug);
+    } catch (e) { /* ignore */ }
+    const exists = DB.getLinks().some(l => l.from === noteId && l.to === toId);
+    if (!exists) DB.addLink(noteId, toId, type || '联想', reason || '');
+  }
+
+  function ignoreSuggestion(noteId, toId) {
+    try {
+      const sug = window.ShiyeAI.getSuggestions(noteId);
+      const i = sug.findIndex(s => s.toId === toId);
+      if (i >= 0) sug[i].done = true;
+      window.ShiyeAI.setSuggestions(noteId, sug);
+    } catch (e) { /* ignore */ }
   }
 
   // ---------- 编辑器 ----------
@@ -210,7 +288,7 @@
     const s = {};
     ['f-title', 'f-year', 'f-yearend', 'f-timelabel', 'f-chapter', 'f-page', 'f-quote',
      'f-thoughts', 'f-tags', 'f-book', 'f-book-title', 'f-book-author',
-     'f-link-to', 'f-link-type', 'f-link-note'].forEach(id => {
+     'f-link-to', 'f-link-type', 'f-link-note', 'ai-raw'].forEach(id => {
       const f = el.querySelector('#' + id);
       if (f) s[id] = f.value;
     });
@@ -251,6 +329,19 @@
           <h2>${isNewNote ? '新笔记' : '编辑笔记'}</h2>
           <button class="btn btn-primary" data-action="save-note">保存</button>
         </div>
+
+        <div class="ai-box">
+          <div class="fld-head"><span>✨ AI 整理</span><span class="dim">粘贴原文/转述，或拍照识别；AI 生成草稿填入下方表单（不会自动保存）</span></div>
+          <textarea id="ai-raw" rows="3" placeholder="粘贴书中原文片段或你的转述…">${esc(snap && snap['ai-raw'] ? snap['ai-raw'] : '')}</textarea>
+          <div class="ai-actions">
+            <button class="btn btn-outline btn-sm" data-action="ai-photo">📷 拍照识别</button>
+            <input type="file" id="ai-photo-input" accept="image/*" style="display:none">
+            <button class="btn btn-outline btn-sm" data-action="ai-locate">🔍 书库定位原文</button>
+            <button class="btn btn-primary btn-sm" data-action="ai-organize">✨ 生成笔记草稿</button>
+            <span class="dim" id="ai-status"></span>
+          </div>
+        </div>
+        <div id="ai-suggest-box">${renderEditorSugBox(draftId || n.id)}</div>
 
         <div class="form-grid">
           <label class="fld fld-full">标题
@@ -295,7 +386,7 @@
           </label>
 
           <label class="fld fld-full">标签（用逗号分隔）
-            <input id="f-tags" type="text" placeholder="如：银行, 泡沫, 待探究" value="${esc((n.tags || []).join(', '))}">
+            <input id="f-tags" type="text" placeholder="如：银行, 泡沫, 待探究" value="${esc(Array.isArray(n.tags) ? n.tags.join(', ') : (n.tags || ''))}">
           </label>
 
           <div class="fld fld-full">
@@ -388,12 +479,28 @@
       thoughts: el.querySelector('#f-thoughts').value,
       tags: el.querySelector('#f-tags').value,
     };
-    DB.upsertNote(note);
+    const saved = DB.upsertNote(note);
     isNew = false;
+    const AI = window.ShiyeAI;
+    try { AI.clearSuggestions(saved.id); } catch (e) { /* ignore */ }
+    // 自动关联建议（后台静默，失败不影响保存）
+    if (AI.configured() && AI.autoLinkEnabled() && DB.getNotes().length <= 300) {
+      AI.suggestLinks(saved).then(sugList => {
+        const sug = (sugList || []).filter(s => s.toId && s.toId !== saved.id && DB.getNote(s.toId));
+        if (sug.length) {
+          AI.setSuggestions(saved.id, sug.map(s => ({ toId: s.toId, type: s.type, reason: s.reason, done: false })));
+          // 建议是异步到达的：若当前正停在详情页，重渲染以显示建议
+          if (location.hash === '#/note/' + saved.id) {
+            renderDetail(document.getElementById('view'), saved.id);
+          }
+        }
+      }).catch(() => { /* 静默 */ });
+    }
     location.hash = '#/note/' + draftId;
   }
 
   function cancelEditor() {
+    try { window.ShiyeAI.clearSuggestions(draftId); } catch (e) { /* ignore */ }
     // 若是新建且从未保存，清理指向该草稿的关联，避免悬空链接
     if (isNew) {
       const id = draftId;
@@ -409,11 +516,27 @@
   // ---------- 设置 / 数据管理 ----------
   function openSettings() {
     const root = document.getElementById('modal-root');
+    const AI = window.ShiyeAI;
     root.innerHTML = `
       <div class="modal-backdrop" data-action="close-settings">
         <div class="modal" data-stop="1">
-          <div class="modal-head"><h3>数据管理</h3><button class="btn btn-ghost" data-action="close-settings">✕</button></div>
+          <div class="modal-head"><h3>数据管理 & AI 设置</h3><button class="btn btn-ghost" data-action="close-settings">✕</button></div>
           <div class="modal-body">
+            <div class="setting-block">
+              <h4>AI 设置（DeepSeek）</h4>
+              <label class="fld">API Key
+                <input id="ai-key" type="password" placeholder="sk-..." value="${esc(AI.getKey())}">
+              </label>
+              <label class="fld">代理地址
+                <input id="ai-worker" type="text" placeholder="https://你的代理.workers.dev" value="${esc(AI.getWorkerUrl())}">
+              </label>
+              <label class="check-row"><input type="checkbox" id="ai-autolink"${AI.autoLinkEnabled() ? ' checked' : ''}> 保存笔记后自动让 AI 建议关联</label>
+              <div class="setting-save-row">
+                <button class="btn btn-primary btn-sm" data-action="save-ai-settings">保存 AI 设置</button>
+                <span class="dim" id="ai-settings-status"></span>
+              </div>
+              <p class="dim small">Key 只存在本机浏览器，请求经你自己的 Cloudflare Workers 代理转发给 DeepSeek，不上传任何第三方。导出备份不含 Key。</p>
+            </div>
             <div class="setting-row">
               <div><b>导出备份</b><div class="dim">把全部笔记下载为一个 JSON 文件，建议定期备份。</div></div>
               <button class="btn btn-outline" data-action="export-data">导出 JSON</button>
@@ -533,6 +656,52 @@
         renderEditor(v, isNew ? 'new' : draftId, snapshotEditor(v));
         break;
       }
+      case 'toggle-drafts':
+        listState.draftOnly = !listState.draftOnly;
+        renderList(document.getElementById('view'));
+        break;
+      case 'accept-draft':
+        DB.setNoteStatus(id, 'confirmed');
+        if (location.hash.indexOf('/note/' + id) >= 0) renderDetail(document.getElementById('view'), id);
+        else renderList(document.getElementById('view'));
+        break;
+      case 'sug-accept': {
+        acceptSuggestion(t.dataset.note, t.dataset.to, t.dataset.type, t.dataset.reason);
+        if (location.hash.indexOf('/note/') >= 0) {
+          const v = document.getElementById('view');
+          const hid = location.hash.split('/')[2];
+          if (v.querySelector('.editor-page')) renderEditor(v, isNew ? 'new' : draftId, snapshotEditor(v));
+          else renderDetail(v, hid);
+        }
+        break;
+      }
+      case 'sug-ignore': {
+        ignoreSuggestion(t.dataset.note, t.dataset.to);
+        if (location.hash.indexOf('/note/') >= 0) {
+          const v = document.getElementById('view');
+          const hid = location.hash.split('/')[2];
+          if (v.querySelector('.editor-page')) renderEditor(v, isNew ? 'new' : draftId, snapshotEditor(v));
+          else renderDetail(v, hid);
+        }
+        break;
+      }
+      case 'ai-photo': document.getElementById('ai-photo-input').click(); break;
+      case 'ai-organize': aiOrganize(); break;
+      case 'ai-locate': aiLocate(); break;
+      case 'locate-pick': {
+        const ch = document.getElementById('f-chapter');
+        const qu = document.getElementById('f-quote');
+        if (ch) ch.value = t.dataset.chapter || '';
+        if (qu) qu.value = (t.dataset.excerpt || '').replace(/^…/, '').replace(/…$/, '');
+        const res = document.getElementById('ai-locate-results');
+        if (res) res.remove();
+        aiStatus('已填入「章节」与「原文摘录」');
+        break;
+      }
+      case 'save-ai-settings': saveAISettings(); break;
+      case 'chat-open': openChat(id); break;
+      case 'chat-close': closeChat(); break;
+      case 'chat-send': sendChat(); break;
       case 'open-settings': openSettings(); break;
       case 'close-settings': closeSettings(); break;
       case 'export-data': doExport(); break;
@@ -547,7 +716,199 @@
           }
         }
         break;
+      default:
+        // 转发给书库页面处理
+        if (window.ShiyeLibUI) window.ShiyeLibUI.handleClick(t);
     }
+  }
+
+  function showDrafts() {
+    listState.draftOnly = true;
+    location.hash = '#/';
+    renderList(document.getElementById('view'));
+  }
+
+  // ---------- AI 整理 / 定位原文 ----------
+  function aiStatus(msg, isErr) {
+    const s = document.getElementById('ai-status');
+    if (s) { s.textContent = msg || ''; s.style.color = isErr ? '#c0392b' : ''; }
+  }
+
+  async function aiOrganize() {
+    const AI = window.ShiyeAI;
+    const raw = document.getElementById('ai-raw').value.trim();
+    if (!raw) { aiStatus('请先粘贴原文或拍照识别', true); return; }
+    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 API Key 与代理地址'); openSettings(); return; }
+    aiStatus('AI 整理中…');
+    const btn = document.querySelector('[data-action="ai-organize"]');
+    if (btn) btn.disabled = true;
+    try {
+      const obj = await AI.organizeNote(raw);
+      const v = document.getElementById('view');
+      const base = snapshotEditor(v);
+      if (obj.title) base['f-title'] = obj.title;
+      if (obj.time) {
+        base['f-year'] = obj.time.year != null ? obj.time.year : '';
+        base['f-yearend'] = obj.time.yearEnd != null ? obj.time.yearEnd : '';
+        base['f-timelabel'] = obj.time.label || '';
+      }
+      if (obj.quote) {
+        base['f-chapter'] = obj.quote.chapter || '';
+        base['f-page'] = obj.quote.page || '';
+        base['f-quote'] = obj.quote.text || '';
+      }
+      if (obj.thoughts) base['f-thoughts'] = obj.thoughts;
+      if (Array.isArray(obj.tags) && obj.tags.length) base['f-tags'] = obj.tags.join(', ');
+      if (Array.isArray(obj.keyData) && obj.keyData.length) {
+        base.datapoints = obj.keyData.map(k => ({
+          indicator: k.indicator || '', value: k.value, unit: k.unit || '',
+          year: k.year, desc: k.desc || '',
+        }));
+      }
+      const sug = (obj.linkSuggestions || []).filter(s => s.toId && s.toId !== draftId && DB.getNote(s.toId));
+      if (sug.length) {
+        AI.setSuggestions(draftId, sug.map(s => ({ toId: s.toId, type: s.type || '联想', reason: s.reason || '', done: false })));
+      }
+      renderEditor(v, isNew ? 'new' : draftId, base);
+      aiStatus('✅ 草稿已填入表单，请检查后保存');
+    } catch (e) {
+      aiStatus((e && e.message) || 'AI 调用失败', true);
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function aiPhoto(file) {
+    aiStatus('OCR 识别中…（首次使用需下载模型约 15MB，请耐心等待）');
+    try {
+      const text = await window.ShiyeAI.ocrImage(file);
+      const ta = document.getElementById('ai-raw');
+      if (ta) ta.value = text ? text : ta.value;
+      aiStatus('✅ 识别完成，请核对文字后点「生成笔记草稿」');
+    } catch (e) {
+      aiStatus((e && e.message) || '识别失败', true);
+    }
+  }
+
+  async function aiLocate() {
+    const q = ((document.getElementById('f-quote') ? document.getElementById('f-quote').value : '')
+      || document.getElementById('ai-raw').value || '').trim();
+    if (!q) { aiStatus('先在「原文摘录」或上方输入框里放一些文字，再定位原文', true); return; }
+    const old = document.getElementById('ai-locate-results');
+    if (old) old.remove();
+    aiStatus('在书库中搜索原文…');
+    try {
+      const hits = await window.ShiyeLibrary.searchAllBooks(q, 3);
+      if (!hits.length) { aiStatus('书库里没有匹配段落（可到「书库」页导入电子书）', true); return; }
+      let html = '<div class="locate-results" id="ai-locate-results"><div class="fld-head"><span>📍 书库中找到的原文</span></div>';
+      hits.forEach(h => {
+        html += '<div class="locate-item" data-action="locate-pick" data-chapter="' + esc(h.chapter) + '" data-excerpt="' + esc(h.excerpt) + '">'
+          + '<b>' + esc(h.bookTitle) + ' · ' + esc(h.chapter) + '</b><p>' + esc(h.excerpt) + '</p></div>';
+      });
+      html += '</div>';
+      const box = document.querySelector('.ai-box');
+      box.insertAdjacentHTML('afterend', html);
+      aiStatus('点击一段原文，自动填入「章节」与「原文摘录」');
+    } catch (e) {
+      aiStatus((e && e.message) || '搜索失败', true);
+    }
+  }
+
+  // ---------- 追问聊天 ----------
+  let chatNoteId = null;
+  let chatStreaming = false;
+
+  function openChat(noteId) {
+    const n = DB.getNote(noteId);
+    if (!n) return;
+    const AI = window.ShiyeAI;
+    if (!AI.configured()) { alert('请先在「⚙ 数据 → AI 设置」里填好 API Key 与代理地址'); openSettings(); return; }
+    chatNoteId = noteId;
+    chatStreaming = false;
+    const msgs = AI.getChat(noteId);
+    document.getElementById('modal-root').innerHTML = `
+      <div class="modal-backdrop chat-backdrop" data-action="chat-close">
+        <div class="chat-sheet" data-stop="1">
+          <div class="chat-head">
+            <b>💬 追问 · ${esc(n.title)}</b>
+            <button class="btn btn-ghost btn-sm" data-action="chat-close">✕</button>
+          </div>
+          <div class="chat-hint dim">上下文 = 本条笔记 + 因果链关联 + 数据点。AI 只基于这些回答，不确定会直说，不会编造。</div>
+          <div class="chat-msgs" id="chat-msgs">${renderChatMsgs(msgs)}</div>
+          <div class="chat-input-row">
+            <input id="chat-q" type="text" placeholder="就这条笔记提问，回车发送…">
+            <button class="btn btn-primary btn-sm" data-action="chat-send">发送</button>
+          </div>
+        </div>
+      </div>`;
+    const input = document.getElementById('chat-q');
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+    setTimeout(() => input.focus(), 60);
+    scrollChat();
+  }
+
+  function renderChatMsgs(msgs) {
+    if (!msgs.length) return '<div class="chat-empty dim">问点什么吧，比如「为什么银行收紧信贷会把正循环变成负循环？」</div>';
+    return msgs.map(m =>
+      '<div class="bubble ' + (m.role === 'user' ? 'bubble-user' : 'bubble-ai') + '">' + esc(m.content).replace(/\n/g, '<br>') + '</div>'
+    ).join('');
+  }
+
+  function closeChat() {
+    chatNoteId = null;
+    chatStreaming = false;
+    document.getElementById('modal-root').innerHTML = '';
+  }
+
+  function scrollChat() {
+    const m = document.getElementById('chat-msgs');
+    if (m) m.scrollTop = m.scrollHeight;
+  }
+
+  async function sendChat() {
+    if (!chatNoteId || chatStreaming) return;
+    const input = document.getElementById('chat-q');
+    const q = (input.value || '').trim();
+    if (!q) return;
+    input.value = '';
+    const AI = window.ShiyeAI;
+    const msgs = AI.getChat(chatNoteId);
+    msgs.push({ role: 'user', content: q });
+    AI.setChat(chatNoteId, msgs);
+    const box = document.getElementById('chat-msgs');
+    box.insertAdjacentHTML('beforeend', '<div class="bubble bubble-user">' + esc(q).replace(/\n/g, '<br>') + '</div>');
+    box.insertAdjacentHTML('beforeend', '<div class="bubble bubble-ai" id="chat-typing">…</div>');
+    scrollChat();
+    chatStreaming = true;
+    let answer = '';
+    try {
+      answer = await AI.askChat(chatNoteId, q, (delta, full) => {
+        const el = document.getElementById('chat-typing');
+        if (el) { el.innerHTML = esc(full).replace(/\n/g, '<br>'); scrollChat(); }
+      });
+      const el = document.getElementById('chat-typing');
+      if (el) el.removeAttribute('id');
+      const stored = AI.getChat(chatNoteId);
+      stored.push({ role: 'assistant', content: answer });
+      AI.setChat(chatNoteId, stored);
+    } catch (e) {
+      const el = document.getElementById('chat-typing');
+      if (el) {
+        el.removeAttribute('id');
+        el.innerHTML = '⚠ ' + esc((e && e.message) || 'AI 调用失败');
+        el.classList.add('bubble-err');
+      }
+    }
+    chatStreaming = false;
+    scrollChat();
+  }
+
+  function saveAISettings() {
+    const AI = window.ShiyeAI;
+    AI.setKey(document.getElementById('ai-key').value);
+    AI.setWorkerUrl(document.getElementById('ai-worker').value);
+    AI.setAutoLink(document.getElementById('ai-autolink').checked);
+    const s = document.getElementById('ai-settings-status');
+    if (s) s.textContent = AI.configured() ? '✅ 已保存，AI 功能可用' : '已保存（Key 与代理地址都要填好才能用）';
   }
 
   function onViewChange(e) {
@@ -555,6 +916,11 @@
       doImport(e.target.files[0]);
       e.target.value = '';
     }
+    if (e.target.id === 'ai-photo-input' && e.target.files && e.target.files[0]) {
+      aiPhoto(e.target.files[0]);
+      e.target.value = '';
+    }
+    if (window.ShiyeLibUI) window.ShiyeLibUI.handleChange(e);
   }
 
   function uid() {
@@ -562,7 +928,7 @@
   }
 
   window.ShiyeUI = {
-    attach, renderList, renderDetail, renderEditor, openSettings,
+    attach, renderList, renderDetail, renderEditor, openSettings, showDrafts,
     esc, fmtVal, fmtTime, timeBadge, bookName, dataChipHTML, tagHTML,
   };
 })();

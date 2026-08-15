@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>书文件解析测试</title>
+  <style>
+    body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 24px; line-height: 1.6; }
+    section { margin: 16px 0; padding: 12px; border: 1px solid #ddd; border-radius: 6px; }
+    h2 { font-size: 16px; margin: 0 0 8px; }
+    pre { background: #f6f6f6; padding: 10px; overflow: auto; white-space: pre-wrap; }
+    .muted { color: #888; }
+    textarea { width: 100%; height: 120px; font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>书文件解析模块测试</h1>
+
+  <section>
+    <h2>文件解析（EPUB / PDF / TXT / MD）</h2>
+    <input type="file" id="file" accept=".epub,.pdf,.txt,.md,.markdown">
+    <div id="fileResult" class="muted">请选择文件…</div>
+  </section>
+
+  <section>
+    <h2>文本解析（parseTextFile）</h2>
+    <textarea id="txtInput" placeholder="粘贴文本，可用「第X章/第X节」等标题行切分">第一章 开端
+这是第一章的正文内容，讲述故事的起点。
+
+第二章 发展
+这是第二章的正文内容，讲述故事的发展与转折。</textarea>
+    <div><button id="txtBtn">解析文本</button></div>
+    <pre id="txtResult" class="muted"></pre>
+  </section>
+
+  <script src="../js/library-parse.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      var fileInput = document.getElementById('file');
+      var fileResult = document.getElementById('fileResult');
+      var txtInput = document.getElementById('txtInput');
+      var txtBtn = document.getElementById('txtBtn');
+      var txtResult = document.getElementById('txtResult');
+
+      function renderBook(result) {
+        var lines = [];
+        if (result.title) lines.push('书名：' + result.title);
+        if (result.author) lines.push('作者：' + result.author);
+        lines.push('章节数：' + result.chapters.length);
+        result.chapters.forEach(function (c, i) {
+          lines.push('  [' + (i + 1) + '] ' + c.title + '（' + c.text.length + ' 字）');
+        });
+        return lines.join('\n');
+      }
+
+      fileInput.addEventListener('change', function () {
+        var f = fileInput.files && fileInput.files[0];
+        if (!f) return;
+        var fmt = window.ShiyeParse.detectFormat(f.name);
+        fileResult.textContent = '解析中：' + f.name + '（格式：' + (fmt || '未知') + '）…';
+        var reader = new FileReader();
+        reader.onload = function () {
+          var ab = reader.result;
+          var p;
+          if (fmt === 'epub') p = window.ShiyeParse.parseEpub(ab);
+          else if (fmt === 'pdf') p = window.ShiyeParse.parsePdf(ab, function (prog) {
+            fileResult.textContent = 'PDF 解析中：' + prog.page + ' / ' + prog.totalPages + ' 页';
+          });
+          else if (fmt === 'txt' || fmt === 'md') {
+            var text = new TextDecoder('utf-8').decode(ab);
+            p = Promise.resolve(window.ShiyeParse.parseTextFile(f.name, text));
+          } else {
+            fileResult.textContent = '不支持的文件格式：' + f.name;
+            return;
+          }
+          p.then(function (result) {
+            if (fmt === 'txt' || fmt === 'md') {
+              result = window.ShiyeParse.parseTextFile(f.name, new TextDecoder('utf-8').decode(ab));
+            }
+            if (!result.title) result.title = f.name.replace(/\.[^.]+$/, '');
+            fileResult.textContent = renderBook(result);
+          }).catch(function (err) {
+            fileResult.textContent = '解析失败：' + (err && err.message ? err.message : err);
+          });
+        };
+        reader.readAsArrayBuffer(f);
+      });
+
+      txtBtn.addEventListener('click', function () {
+        var r = window.ShiyeParse.parseTextFile('输入文本', txtInput.value);
+        txtResult.textContent = renderBook(r);
+      });
+    })();
+  </script>
+</body>
+</html>

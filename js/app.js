@@ -14,6 +14,8 @@
       window.ShiyeChart.render(view);
     } else if (hash === 'graph') {
       window.ShiyeGraph.render(view);
+    } else if (hash === 'library') {
+      window.ShiyeLibUI.render(view);
     } else if (hash.indexOf('note/') === 0) {
       const parts = hash.split('/'); // ['note', id, 'edit'?]
       const id = parts[1];
@@ -31,6 +33,7 @@
     if (hash === '#/timeline') key = 'timeline';
     else if (hash === '#/chart') key = 'chart';
     else if (hash === '#/graph') key = 'graph';
+    else if (hash === '#/library') key = 'library';
     document.querySelectorAll('.nav-tab').forEach(a => {
       a.classList.toggle('active', a.dataset.nav === key);
     });

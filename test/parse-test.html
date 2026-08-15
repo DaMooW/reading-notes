@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>测试中…</title>
+</head>
+<body>
+  <pre id="result"></pre>
+  <script src="../js/library-parse.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      var resultEl = document.getElementById('result');
+      var checks = [];
+
+      function check(name, pass, actual, expected) {
+        checks.push({ name: name, pass: !!pass, actual: actual, expected: expected });
+      }
+
+      var TXT = [
+        '第一章 开端',
+        '这是第一章的正文内容，讲述故事的起点。',
+        '第二章 发展',
+        '这是第二章的正文内容，讲述故事的发展与转折。',
+        '第三章 结尾',
+        '这是第三章的正文内容，讲述故事的结局。'
+      ].join('\n');
+
+      function run() {
+        var detect = {
+          epub: window.ShiyeParse.detectFormat('a.epub'),
+          pdf: window.ShiyeParse.detectFormat('b.PDF'),
+          txt: window.ShiyeParse.detectFormat('c.txt'),
+          md: window.ShiyeParse.detectFormat('d.md'),
+          unknown: window.ShiyeParse.detectFormat('e.docx')
+        };
+        check('detectFormat(a.epub) === epub', detect.epub === 'epub', detect.epub, 'epub');
+        check('detectFormat(b.PDF) === pdf', detect.pdf === 'pdf', detect.pdf, 'pdf');
+        check('detectFormat(c.txt) === txt', detect.txt === 'txt', detect.txt, 'txt');
+        check('detectFormat(d.md) === md', detect.md === 'md', detect.md, 'md');
+        check('detectFormat(e.docx) === null', detect.unknown === null, detect.unknown, null);
+
+        var txtResult = window.ShiyeParse.parseTextFile('sample.txt', TXT);
+        check('txt 章节数 = 3', txtResult.chapters.length === 3, txtResult.chapters.length, 3);
+        check('txt 第1章标题含「开端」', txtResult.chapters.length > 0 && txtResult.chapters[0].title.indexOf('开端') >= 0,
+          txtResult.chapters.length > 0 ? txtResult.chapters[0].title : '(无)', '第一章 开端');
+        check('txt 第2章正文含「发展」', txtResult.chapters.length > 1 && txtResult.chapters[1].text.indexOf('发展') >= 0,
+          txtResult.chapters.length > 1 ? txtResult.chapters[1].text : '(无)', '含「发展」');
+
+        return fetch('./fixture.epub')
+          .then(function (r) { return r.arrayBuffer(); })
+          .then(function (ab) { return window.ShiyeParse.parseEpub(ab); })
+          .then(function (epub) {
+            check('epub 章节数 = 2', epub.chapters.length === 2, epub.chapters.length, 2);
+            check('epub 第1章标题含「泡沫」', epub.chapters.length > 0 && epub.chapters[0].title.indexOf('泡沫') >= 0,
+              epub.chapters.length > 0 ? epub.chapters[0].title : '(无)', '含「泡沫」');
+            check('epub 第2章正文含「38957」', epub.chapters.length > 1 && epub.chapters[1].text.indexOf('38957') >= 0,
+              epub.chapters.length > 1 ? '命中' : '(未命中)', '含 38957');
+            check('epub 标题含「测试之书」', epub.title.indexOf('测试之书') >= 0, epub.title, '《测试之书》');
+            check('epub 作者 = 测试作者', epub.author === '测试作者', epub.author, '测试作者');
+
+            var passed = checks.every(function (c) { return c.pass; });
+            var out = {
+              passed: passed,
+              detect: detect,
+              txt: txtResult,
+              epub: epub,
+              checks: checks
+            };
+            document.title = passed ? '通过' : '失败';
+            resultEl.textContent = JSON.stringify(out, null, 2);
+          })
+          .catch(function (err) {
+            var out = {
+              passed: false,
+              error: String(err && err.message ? err.message : err),
+              detect: detect,
+              txt: txtResult,
+              checks: checks
+            };
+            document.title = '失败';
+            resultEl.textContent = JSON.stringify(out, null, 2);
+          });
+      }
+
+      if (window.ShiyeParse) {
+        run();
+      } else {
+        resultEl.textContent = JSON.stringify({ passed: false, error: 'window.ShiyeParse 未加载' });
+        document.title = '失败';
+      }
+    })();
+  </script>
+</body>
+</html>

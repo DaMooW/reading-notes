@@ -1,20 +1,27 @@
 # 拾页 · 读书笔记
 
-把书中的**关键数据、年代、原文定位**与**你的思考、联想**连成一张网。为研读《日本大衰退》这类带数据与因果逻辑的书而设计，纯前端、零服务器、数据只存在你自己的设备里。
+把书中的**关键数据、年代、原文定位**与**你的思考、联想**连成一张网。为研读《日本大衰退》这类带数据与因果逻辑的书而设计，纯前端 + 零服务器，数据只存在你自己的设备里。
 
 ## 功能
 
-- **笔记**：每条笔记包含标题、所属书、年代（起止年份 + 时间标签）、原文定位（章节/页码/原文摘录）、关键数据点（指标/数值/单位/年份/说明）、我的思考/联想、标签
+### 笔记核心
+- **笔记**：标题、所属书、年代（起止年份 + 时间标签）、原文定位（章节/页码/原文摘录）、关键数据点（指标/数值/单位/年份/说明）、我的思考/联想、标签
 - **时间轴**：按年代把笔记铺成一条线，看事件如何一步步发生
 - **数据对比图**：把「关键数据点」自动画成折线（x=年代，按指标分系列，图例可开关、点数据点回笔记）
 - **因果链图**：笔记之间用带类型的关系连线（导致/促进/循环/反转/对比/联想），拖动节点、缩放画布
 - **数据管理**：一键导出/导入 JSON 备份，数据仅存本机浏览器（localStorage）
-- **PWA**：可添加到主屏幕像 App 一样用，支持离线打开
+
+### AI Native 能力（v2，需配置 DeepSeek API Key + 自建代理）
+- **✨ AI 记笔记助手**：粘贴原文/转述（或拍照 OCR 识别书页）→ AI 生成结构化笔记草稿填入表单：标题、年代、关键数据点、原文摘录、思考、标签，并**建议与已有笔记的关联**（关系类型 + 理由），一键接受
+- **💡 自动关联**：保存笔记后 AI 自动判断「这条该和哪几条连线」，以建议形式呈现，人工确认后生效
+- **💬 追问 AI**：每条笔记底部可直接提问，AI 只基于「本条笔记 + 因果链邻居 + 数据点」回答，不编造，并给出可继续追问的问题
+- **📚 书库 + AI 拆书**：导入电子书（EPUB/PDF/TXT/MD，全文存本机 IndexedDB）→ 一键拆书：AI 逐章生成笔记草稿（含原文定位）→ **审阅队列**逐条采纳/修改/丢弃；任何笔记可「书库定位原文」自动回填章节与摘录
+- **草稿态原则**：所有 AI 产出以草稿态（黄标）入库，你确认后才成为正式笔记——笔记库始终只有你自己的判断
 
 ## 使用
 
 ### Mac
-浏览器打开线上地址（GitHub Pages），或本地任意静态服务器。
+浏览器打开线上地址（GitHub Pages）。
 
 ### iPhone / iPad
 1. Safari 打开线上地址
@@ -22,6 +29,21 @@
 3. 从主屏图标进入，全屏使用
 
 > 数据按「设备 + 浏览器」本地保存，两台设备之间的数据暂不互通；换设备或想备份时用「数据 → 导出/导入」。
+
+## AI 功能配置（三步）
+
+1. **DeepSeek API Key**：[platform.deepseek.com](https://platform.deepseek.com) 注册并充值（¥10 起），创建 API Key（sk- 开头）。
+2. **部署代理 Worker**：本项目自带一个无状态代理（见 `../reading-notes-worker`）：
+   ```bash
+   cd ../reading-notes-worker
+   npm install
+   npx wrangler login      # 首次会打开浏览器登录 Cloudflare（免费账号）
+   npx wrangler deploy     # 部署后得到 https://reading-notes-worker.<你的子域>.workers.dev
+   ```
+   代理只转发请求、不保存任何数据，你的 Key 存在自己设备浏览器里，每次请求带上。
+3. **拾页里配置**：右上「⚙ 数据 → AI 设置」填入 API Key 与代理地址，勾选「自动建议关联」→ 保存。
+
+> 不配 AI 也完全可用：拾页的核心笔记功能不依赖任何 AI 或服务器。
 
 ## 更新与部署
 
@@ -33,6 +55,8 @@ GitHub Pages 会自动重新发布。若想改动外观/功能：
 
 - 界面：`js/ui.js`、`css/style.css`、`index.html`
 - 数据模型/预置数据：`js/db.js`
+- AI 层（密钥/Worker 客户端/提示词/OCR）：`js/ai.js`
+- 书库（IndexedDB/拆书任务/原文定位）：`js/library.js`、`js/library-ui.js`、`js/library-parse.js`
 - 三个可视化：`js/timeline.js`、`js/charts.js`、`js/graph.js`
 - 离线缓存：`sw.js`（改内容后请把 `CACHE` 版本号 +1）
 
@@ -41,6 +65,8 @@ GitHub Pages 会自动重新发布。若想改动外观/功能：
 ```bash
 python3 -m http.server 8000   # 在项目目录运行
 # 打开 http://127.0.0.1:8000
+# 测试 AI 功能无需真实 Key：cd ../reading-notes-worker && node mock/deepseek-mock.js
+# 然后在「AI 设置」里把代理地址填 http://127.0.0.1:8790，Key 填任意 sk- 开头字符串
 ```
 
 ## 目录结构
@@ -49,13 +75,19 @@ python3 -m http.server 8000   # 在项目目录运行
 index.html            入口
 css/style.css         样式
 js/db.js              数据层（localStorage + 预置示例）
-js/ui.js              列表/详情/编辑/数据管理
+js/ui.js              列表/详情/编辑/AI 整理/追问/数据管理
+js/ai.js              AI 层（密钥管理、Worker 流式客户端、提示词、OCR 懒加载）
+js/library.js         书库数据层（IndexedDB、拆书任务、原文定位搜索）
+js/library-ui.js      书库页面
+js/library-parse.js   EPUB/PDF/TXT/MD 解析（ShiyeParse）
 js/timeline.js        时间轴
 js/charts.js          数据对比图（ECharts）
 js/graph.js           因果链图（ECharts）
 js/app.js             路由与启动
-sw.js                 Service Worker（离线）
+sw.js                 Service Worker（离线 + CDN 按需缓存）
 manifest.webmanifest  PWA 清单
 icons/                图标（make-icons.js 可重新生成）
-vendor/echarts.min.js ECharts（本地化，离线可用）
+vendor/               echarts / jszip / pdf.js（全部本地化，离线可用）
+tools/test-parse.html 书文件解析可视化测试页
+test/                 解析模块测试夹具
 ```
